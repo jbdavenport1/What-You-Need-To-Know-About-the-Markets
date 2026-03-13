@@ -1,7 +1,8 @@
-import csv
-import json
 import os
-import sys
+import json
+import requests
+import yfinance as yf
+from dateutil import parser as date_parser
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
