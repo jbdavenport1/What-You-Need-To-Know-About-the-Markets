@@ -1,3 +1,3 @@
-advisor_name,firm_name,email,is_active
-John Davenport,Three Crosses,johnd@davenportclan.com,true
-Robert Wainscott,DigitalCSA, Rlwaynescott@gmail.com, true
+advisor_name,firm_name,email,active,linkedin_enabled
+John Davenport,Alpha Wealth,johnd@davenportclan.com,true,true
+Robert Wainscott,DigitalCSA,Rlwaynescott@gmail.com,true,true
