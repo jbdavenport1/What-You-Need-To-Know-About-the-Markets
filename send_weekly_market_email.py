@@ -12,7 +12,61 @@ from typing import Dict, List, Optional
 
 from branding_layer import BrandingProfile, build_signature_block, safe_color
 from compliance_layer import DEFAULT_DISCLAIMER, apply_compliance_filter, save_compliance_report
+def write_deliverable_files(commentary: dict, output_dir: str) -> dict:
+    import os
 
+    os.makedirs(output_dir, exist_ok=True)
+
+    week_ending = commentary.get("week_ending", "weekly")
+    safe_date = str(week_ending)
+
+    client_email_path = os.path.join(output_dir, f"client_email_{safe_date}.txt")
+    newsletter_path = os.path.join(output_dir, f"newsletter_version_{safe_date}.txt")
+    linkedin_path = os.path.join(output_dir, f"linkedin_post_{safe_date}.txt")
+    talking_points_path = os.path.join(output_dir, f"advisor_talking_points_{safe_date}.txt")
+
+    with open(client_email_path, "w", encoding="utf-8") as f:
+        f.write(commentary.get("client_email", ""))
+
+    with open(newsletter_path, "w", encoding="utf-8") as f:
+        f.write(commentary.get("newsletter_version", ""))
+
+    with open(linkedin_path, "w", encoding="utf-8") as f:
+        f.write(commentary.get("linkedin_version", ""))
+
+    talking_points = commentary.get("advisor_talking_points", [])
+
+    with open(talking_points_path, "w", encoding="utf-8") as f:
+        if isinstance(talking_points, list):
+            for item in talking_points:
+                f.write(f"- {item}\n")
+        else:
+            f.write(str(talking_points))
+
+    return {
+        "client_email": client_email_path,
+        "newsletter_version": newsletter_path,
+        "linkedin_post": linkedin_path,
+        "advisor_talking_points": talking_points_path,
+    }
+    def attach_file_to_message(msg, file_path: str):
+    import os
+    from email.mime.base import MIMEBase
+    from email import encoders
+
+    with open(file_path, "rb") as f:
+        part = MIMEBase("application", "octet-stream")
+        part.set_payload(f.read())
+
+    encoders.encode_base64(part)
+
+    part.add_header(
+        "Content-Disposition",
+        f'attachment; filename="{os.path.basename(file_path)}"'
+    )
+
+    msg.attach(part)
+    
 BASE_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = BASE_DIR / "output"
 SUBSCRIBERS_CSV = Path(os.getenv("SUBSCRIBERS_CSV", BASE_DIR / "advisor_subscribers.csv"))
@@ -117,7 +171,7 @@ def latest_market_csv(output_dir: Path) -> Optional[Path]:
 def load_commentary(path: Path) -> Dict[str, object]:
     with path.open("r", encoding="utf-8") as handle:
         return json.load(handle)
-
+def deliverable_files = write_deliverable_files(commentary, OUTPUT_DIR)
 
 def extract_week_ending(commentary_path: Path) -> str:
     stem = commentary_path.stem
@@ -238,6 +292,10 @@ def build_message(subscriber: Subscriber, subject: str, html_body: str, text_bod
     message["Reply-To"] = REPLY_TO
     message.attach(MIMEText(text_body, "plain", "utf-8"))
     message.attach(MIMEText(html_body, "html", "utf-8"))
+    attach_file_to_message(msg, deliverable_files["client_email"])
+    attach_file_to_message(msg, deliverable_files["newsletter_version"])
+    attach_file_to_message(msg, deliverable_files["linkedin_post"])
+    attach_file_to_message(msg, deliverable_files["advisor_talking_points"])
     return message
 
 
