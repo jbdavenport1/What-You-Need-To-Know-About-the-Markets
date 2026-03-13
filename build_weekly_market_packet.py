@@ -80,7 +80,7 @@ def http_get(url: str, params: Dict[str, Any], timeout: int = 30) -> Dict[str, A
     response.raise_for_status()
     return response.json()
 
-def get_weekly_return_pct_yf
+def get_weekly_return_pct_yf(symbol: str) -> float:
 sp500_weekly_return_pct = get_weekly_return_pct_yf("SPY")
 nasdaq_weekly_return_pct = get_weekly_return_pct_yf("QQQ")
 dow_weekly_return_pct = get_weekly_return_pct_yf("DIA")
