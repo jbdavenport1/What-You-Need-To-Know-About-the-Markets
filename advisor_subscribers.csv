@@ -1,3 +1,3 @@
-email,advisor_name,firm_name,active,linkedin_enabled,sender_display_name,brand_primary_color,brand_secondary_color,logo_url,website_url,phone,email_signature,custom_disclaimer,subject_prefix,cta_text
-advisor1@example.com,Jane Advisor,Alpha Wealth,true,true,Alpha Wealth,#0B1F3A,#F4F6F8,https://example.com/logo-alpha.png,https://example.com,804-555-0101,"Jane Advisor\nAlpha Wealth\nRichmond, VA",,"Alpha Wealth","Questions about this week's update? Reply here."
-advisor2@example.com,Mark Planner,Blue Ridge Capital,true,false,Blue Ridge Capital,#234E52,#F8FAFC,https://example.com/logo-blue.png,https://example.com,703-555-0110,"Mark Planner\nBlue Ridge Capital",,"Blue Ridge Capital","Need a client-ready version? Reply and we will tailor it."
+advisor_name,firm_name,email,is_active
+John Davenport,Three Crosses,johnd@davenportclan.com,true
+Robert Wainscott,DigitalCSA, Rlwaynescott@gmail.com, true
