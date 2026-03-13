@@ -81,23 +81,23 @@ def http_get(url: str, params: Dict[str, Any], timeout: int = 30) -> Dict[str, A
     return response.json()
 
 def get_weekly_return_pct_yf(symbol: str) -> float:
-hist = yf.download(symbol, period="3mo", interval="1wk", progress=False, auto_adjust=False)
+    hist = yf.download(symbol, period="3mo", interval="1wk", progress=False, auto_adjust=False)
 
-if hist is None or hist.empty:
-    raise RuntimeError(f"Yahoo Finance returned no data for {symbol}")
+    if hist is None or hist.empty:
+        raise RuntimeError(f"Yahoo Finance returned no data for {symbol}")
 
-if "Adj Close" in hist.columns:
-    closes = hist["Adj Close"].dropna()
-else:
-    closes = hist["Close"].dropna()
+    if "Adj Close" in hist.columns:
+        closes = hist["Adj Close"].dropna()
+    else:
+        closes = hist["Close"].dropna()
 
-if len(closes) < 2:
-    raise RuntimeError(f"Not enough weekly data returned for {symbol}")
+    if len(closes) < 2:
+        raise RuntimeError(f"Not enough weekly data returned for {symbol}")
 
-latest = float(closes.iloc[-1])
-previous = float(closes.iloc[-2])
+    latest = float(closes.iloc[-1])
+    previous = float(closes.iloc[-2])
 
-return round(((latest / previous) - 1) * 100, 2)
+    return round(((latest / previous) - 1) * 100, 2)
 
 sp500_weekly_return_pct = get_weekly_return_pct_yf("SPY")
 nasdaq_weekly_return_pct = get_weekly_return_pct_yf("QQQ")
