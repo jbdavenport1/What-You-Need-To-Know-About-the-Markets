@@ -80,23 +80,12 @@ def http_get(url: str, params: Dict[str, Any], timeout: int = 30) -> Dict[str, A
     response.raise_for_status()
     return response.json()
 
-
-def fetch_alpha_vantage_weekly_series(symbol: str) -> Dict[str, Any]:
-    if not ALPHAVANTAGE_API_KEY:
-        raise RuntimeError("Missing ALPHAVANTAGE_API_KEY.")
-    data = http_get(
-        "https://www.alphavantage.co/query",
-        {
-            "function": "TIME_SERIES_WEEKLY_ADJUSTED",
-            "symbol": symbol,
-            "apikey": ALPHAVANTAGE_API_KEY,
-        },
-    )
-    key = "Weekly Adjusted Time Series"
-    if key not in data:
-        raise RuntimeError(f"Alpha Vantage response missing '{key}' for {symbol}: {data}")
-    return data[key]
-
+def get_weekly_return_pct_yf
+sp500_weekly_return_pct = get_weekly_return_pct_yf("SPY")
+nasdaq_weekly_return_pct = get_weekly_return_pct_yf("QQQ")
+dow_weekly_return_pct = get_weekly_return_pct_yf("DIA")
+oil_weekly_return_pct = get_weekly_return_pct_yf("USO")
+gold_weekly_return_pct = get_weekly_return_pct_yf("GLD")
 
 def latest_two_weeks_from_av(symbol: str, target_friday: datetime.date) -> Tuple[Tuple[str, Dict[str, str]], Tuple[str, Dict[str, str]]]:
     weekly = fetch_alpha_vantage_weekly_series(symbol)
