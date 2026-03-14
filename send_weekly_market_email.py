@@ -22,7 +22,7 @@ CHART_PATHS = [
 ]
 
 SMTP_SERVER = os.getenv("SMTP_SERVER", "").strip()
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_PORT_RAW = os.getenv("SMTP_PORT", "").strip()
 SMTP_USERNAME = os.getenv("SMTP_USERNAME", "").strip()
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "").strip()
 EMAIL_FROM = os.getenv("EMAIL_FROM", SMTP_USERNAME).strip()
@@ -61,9 +61,35 @@ def build_email_body() -> str:
     )
 
 
+def validate_env() -> int:
+    missing = []
+
+    if not SMTP_SERVER:
+        missing.append("SMTP_SERVER")
+    if not SMTP_PORT_RAW:
+        missing.append("SMTP_PORT")
+    if not SMTP_USERNAME:
+        missing.append("SMTP_USERNAME")
+    if not SMTP_PASSWORD:
+        missing.append("SMTP_PASSWORD")
+    if not EMAIL_FROM:
+        missing.append("EMAIL_FROM")
+    if not EMAIL_TO:
+        missing.append("EMAIL_TO")
+
+    if missing:
+        raise ValueError(f"Missing email environment variables: {', '.join(missing)}")
+
+    try:
+        smtp_port = int(SMTP_PORT_RAW)
+    except ValueError:
+        raise ValueError(f"SMTP_PORT must be an integer. Current value: {SMTP_PORT_RAW}")
+
+    return smtp_port
+
+
 def send_email() -> None:
-    if not SMTP_SERVER or not SMTP_USERNAME or not SMTP_PASSWORD or not EMAIL_FROM or not EMAIL_TO:
-        raise ValueError("Missing SMTP or email environment variables.")
+    smtp_port = validate_env()
 
     if not DOCX_PATH.exists():
         raise FileNotFoundError(f"DOCX file not found: {DOCX_PATH}")
@@ -88,7 +114,7 @@ def send_email() -> None:
         if chart_path.exists():
             attach_file(msg, chart_path, "image", "png")
 
-    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+    with smtplib.SMTP(SMTP_SERVER, smtp_port) as server:
         server.starttls()
         server.login(SMTP_USERNAME, SMTP_PASSWORD)
         server.send_message(msg)
