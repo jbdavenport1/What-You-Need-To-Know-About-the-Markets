@@ -28,6 +28,14 @@ jobs:
       - name: Ensure output directory exists
         run: mkdir -p output
 
+      - name: Check secret presence
+        env:
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: |
+          if [ -z "$SMTP_SERVER" ]; then echo "SMTP_SERVER is missing"; else echo "SMTP_SERVER is present"; fi
+          if [ -z "$EMAIL_TO" ]; then echo "EMAIL_TO is missing"; else echo "EMAIL_TO is present"; fi
+
       - name: Run weekly market automation
         env:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
@@ -37,8 +45,8 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
-
         run: python run_weekly_market_automation.py
+
       - name: Upload output artifacts
         if: always()
         uses: actions/upload-artifact@v6
