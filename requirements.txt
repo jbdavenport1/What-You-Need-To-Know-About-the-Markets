@@ -3,3 +3,4 @@ python-dotenv
 python-dateutil
 yfinance
 pandas
+matplotlib
