@@ -4,3 +4,4 @@ python-dateutil
 yfinance
 pandas
 matplotlib
+python-docx
