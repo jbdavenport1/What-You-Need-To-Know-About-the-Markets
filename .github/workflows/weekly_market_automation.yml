@@ -30,15 +30,15 @@ jobs:
 
       - name: Run weekly market automation
         env:
-          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
-          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
-          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
-        run: python run_weekly_market_automation.py
+  FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+  SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+  SMTP_PORT: ${{ secrets.SMTP_PORT }}
+  SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+  SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+  EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+  EMAIL_TO: ${{ secrets.EMAIL_TO }}
 
+        run: python run_weekly_market_automation.py
       - name: Upload output artifacts
         if: always()
         uses: actions/upload-artifact@v6
