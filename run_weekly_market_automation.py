@@ -1,29 +1,25 @@
 import subprocess
 import sys
-from pathlib import Path
-
-BASE_DIR = Path(__file__).resolve().parent
 
 
-def run_step(script_name: str) -> None:
-    script_path = BASE_DIR / script_name
+SCRIPTS = [
+    "build_weekly_market_packet.py",
+    "create_market_charts.py",
+    "build_weekly_market_docx.py",
+    "send_weekly_market_email.py",
+]
+
+
+def run_script(script_name: str) -> None:
     print(f"Running: {script_name}")
-    result = subprocess.run(
-        [sys.executable, str(script_path)],
-        cwd=str(BASE_DIR),
-        check=False,
-    )
-    if result.returncode != 0:
-        raise SystemExit(result.returncode)
+    subprocess.run([sys.executable, script_name], check=True)
+    print(f"Completed: {script_name}")
 
 
-def main() -> int:
-    run_step("build_weekly_market_packet.py")
-    run_step("create_market_charts.py")
-    run_step("send_weekly_market_email.py")
-    print("Weekly market automation run complete.")
-    return 0
+def main() -> None:
+    for script in SCRIPTS:
+        run_script(script)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
