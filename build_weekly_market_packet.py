@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import math
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -10,7 +9,6 @@ from typing import Dict, Any, List, Optional
 import pandas as pd
 import requests
 import yfinance as yf
-from dateutil.relativedelta import relativedelta
 from dotenv import load_dotenv
 
 
@@ -35,8 +33,8 @@ TICKERS = {
     "LQD": "LQD",
     "VIX": "^VIX",
     "VIX3M": "^VIX3M",
-    "TNX": "^TNX",   # 10Y Treasury yield x10
-    "IRX": "^IRX",   # 13-week Treasury bill x100
+    "TNX": "^TNX",
+    "IRX": "^IRX",
 }
 
 CHARTS = [
@@ -50,7 +48,7 @@ CHARTS = [
     },
     {
         "path": "output/credit_spreads.png",
-        "caption": "Figure 3. Credit Spread Proxy"
+        "caption": "Figure 3. Credit Risk Proxy"
     }
 ]
 
@@ -83,11 +81,7 @@ def previous_business_day(date_obj: datetime) -> datetime:
     return d
 
 
-def get_history(
-    ticker: str,
-    period: str = "6mo",
-    interval: str = "1d"
-) -> pd.DataFrame:
+def get_history(ticker: str, period: str = "12mo", interval: str = "1d") -> pd.DataFrame:
     try:
         df = yf.download(
             ticker,
@@ -106,7 +100,7 @@ def get_history(
         return pd.DataFrame()
 
 
-def get_close_series(ticker: str, period: str = "6mo") -> pd.Series:
+def get_close_series(ticker: str, period: str = "12mo") -> pd.Series:
     df = get_history(ticker, period=period)
     if df.empty or "Close" not in df.columns:
         return pd.Series(dtype=float)
@@ -234,7 +228,6 @@ def compute_market_snapshot(values: Dict[str, Any]) -> Dict[str, Any]:
     if vix_last is not None and vix3m_last not in (None, 0):
         vol_term_structure = vix_last / vix3m_last
 
-    # yfinance treasury symbols are scaled oddly
     ten_year = None
     three_month = None
 
@@ -251,17 +244,15 @@ def compute_market_snapshot(values: Dict[str, Any]) -> Dict[str, Any]:
         curve_slope = ten_year - three_month
 
     fed_funds = get_latest_fred_value("FEDFUNDS")
-    cpi_yoy = get_latest_fred_value("CPIAUCSL")
     unemployment = get_latest_fred_value("UNRATE")
 
-    cpi_yoy_est = None
-    if cpi_yoy is not None:
-        cpi_df = get_fred_series("CPIAUCSL")
-        if not cpi_df.empty and len(cpi_df) >= 13:
-            last = safe_float(cpi_df["value"].iloc[-1])
-            year_ago = safe_float(cpi_df["value"].iloc[-13])
-            if last is not None and year_ago not in (None, 0):
-                cpi_yoy_est = ((last / year_ago) - 1.0) * 100.0
+    cpi_yoy = None
+    cpi_df = get_fred_series("CPIAUCSL")
+    if not cpi_df.empty and len(cpi_df) >= 13:
+        last = safe_float(cpi_df["value"].iloc[-1])
+        year_ago = safe_float(cpi_df["value"].iloc[-13])
+        if last is not None and year_ago not in (None, 0):
+            cpi_yoy = ((last / year_ago) - 1.0) * 100.0
 
     snapshot = {
         "spy_last": spy_last,
@@ -281,44 +272,41 @@ def compute_market_snapshot(values: Dict[str, Any]) -> Dict[str, Any]:
         "three_month": three_month,
         "curve_slope": curve_slope,
         "fed_funds": fed_funds,
-        "cpi_yoy": cpi_yoy_est,
+        "cpi_yoy": cpi_yoy,
         "unemployment": unemployment,
     }
     return snapshot
 
 
 def market_regime_text(snapshot: Dict[str, Any]) -> str:
-    spy_above_50 = snapshot.get("spy_above_50dma")
-    spy_above_200 = snapshot.get("spy_above_200dma")
-    breadth = safe_float(snapshot.get("breadth_ratio"))
-    vol_ts = safe_float(snapshot.get("vol_term_structure"))
-    vix = safe_float(snapshot.get("vix_last"))
-
     positives = 0
     negatives = 0
 
-    if spy_above_50:
+    if snapshot.get("spy_above_50dma"):
         positives += 1
     else:
         negatives += 1
 
-    if spy_above_200:
+    if snapshot.get("spy_above_200dma"):
         positives += 1
     else:
         negatives += 1
 
+    breadth = safe_float(snapshot.get("breadth_ratio"))
     if breadth is not None:
         if breadth >= 0:
             positives += 1
         else:
             negatives += 1
 
+    vol_ts = safe_float(snapshot.get("vol_term_structure"))
     if vol_ts is not None:
         if vol_ts < 1:
             positives += 1
         else:
             negatives += 1
 
+    vix = safe_float(snapshot.get("vix_last"))
     if vix is not None:
         if vix < 18:
             positives += 1
@@ -335,110 +323,71 @@ def market_regime_text(snapshot: Dict[str, Any]) -> str:
 def build_executive_summary(snapshot: Dict[str, Any]) -> str:
     regime = market_regime_text(snapshot)
 
-    spy_1w = fmt_pct(snapshot.get("spy_1w"))
-    spy_1m = fmt_pct(snapshot.get("spy_1m"))
-    spy_ytd = fmt_pct(snapshot.get("spy_ytd"))
-    vix = fmt_num(snapshot.get("vix_last"), 1)
-    ten_year = fmt_num(snapshot.get("ten_year"), 2)
-    curve = fmt_num(snapshot.get("curve_slope"), 2)
-
     if regime == "constructive":
-        tone = (
-            "The tape remains constructive. Price trend, volatility structure, and broad risk appetite still support measured exposure."
-        )
+        tone = "The tape remains constructive. Trend, volatility structure, and risk appetite still support measured exposure."
     elif regime == "defensive":
-        tone = (
-            "The backdrop is defensive. Trend, risk appetite, and internal participation suggest caution remains warranted."
-        )
+        tone = "The backdrop is defensive. Trend, breadth, and cross-asset confirmation continue to argue for caution."
     else:
-        tone = (
-            "The backdrop is mixed. The market is offering opportunity, but the signals are not clean enough to argue for complacency."
-        )
+        tone = "The backdrop is mixed. Opportunity remains, but the signals are not clean enough to justify complacency."
 
     return (
-        f"{tone} Over the past week, SPY returned {spy_1w}. Over the past month, SPY returned {spy_1m}, and the year-to-date move stands at {spy_ytd}. "
-        f"Implied volatility remains a key watchpoint, with VIX at {vix}. The 10-year Treasury yield is {ten_year}%, and the 10Y minus 3M curve stands at {curve}%."
+        f"{tone} SPY returned {fmt_pct(snapshot.get('spy_1w'))} over the last week and {fmt_pct(snapshot.get('spy_1m'))} over the last month. "
+        f"Year to date, SPY is up {fmt_pct(snapshot.get('spy_ytd'))}. "
+        f"VIX is {fmt_num(snapshot.get('vix_last'), 1)}. "
+        f"The 10-year Treasury yield stands at {fmt_num(snapshot.get('ten_year'), 2)}%, and the 10Y minus 3M curve is {fmt_num(snapshot.get('curve_slope'), 2)}%."
     )
 
 
 def build_market_overview(snapshot: Dict[str, Any]) -> str:
-    spy_1w = fmt_pct(snapshot.get("spy_1w"))
-    qqq_1m = fmt_pct(snapshot.get("qqq_1m"))
-    iwm_1m = fmt_pct(snapshot.get("iwm_1m"))
-    ten_year = fmt_num(snapshot.get("ten_year"), 2)
-    fed_funds = fmt_num(snapshot.get("fed_funds"), 2)
-    cpi = fmt_num(snapshot.get("cpi_yoy"), 2)
-    unemployment = fmt_num(snapshot.get("unemployment"), 2)
-
     return (
         f"U.S. equities continue to digest shifting expectations around growth, inflation, and policy. "
-        f"SPY returned {spy_1w} over the last week. Over the last month, QQQ returned {qqq_1m} while IWM returned {iwm_1m}, offering a quick read on large-cap growth leadership versus smaller-cap participation. "
-        f"Rates remain central to the macro conversation. The 10-year Treasury yield is {ten_year}%, while the effective fed funds rate is {fed_funds}%. "
-        f"On the macro side, estimated CPI year-over-year inflation is {cpi}% and unemployment is {unemployment}%."
+        f"SPY returned {fmt_pct(snapshot.get('spy_1w'))} over the last week. "
+        f"Over the last month, QQQ returned {fmt_pct(snapshot.get('qqq_1m'))} while IWM returned {fmt_pct(snapshot.get('iwm_1m'))}, offering a clean read on large-cap growth leadership versus smaller-cap participation. "
+        f"Rates remain central to the macro conversation. The 10-year Treasury yield is {fmt_num(snapshot.get('ten_year'), 2)}%, while estimated CPI inflation is {fmt_num(snapshot.get('cpi_yoy'), 2)}% year over year and unemployment is {fmt_num(snapshot.get('unemployment'), 2)}%."
     )
 
 
 def build_equity_market_trends(snapshot: Dict[str, Any]) -> str:
-    spy_ytd = fmt_pct(snapshot.get("spy_ytd"))
-    qqq_1m = fmt_pct(snapshot.get("qqq_1m"))
-    iwm_1m = fmt_pct(snapshot.get("iwm_1m"))
     breadth = safe_float(snapshot.get("breadth_ratio"))
-    spy_above_50 = snapshot.get("spy_above_50dma")
-    spy_above_200 = snapshot.get("spy_above_200dma")
 
-    breadth_text = "Breadth is keeping up with cap-weighted benchmarks."
-    if breadth is not None:
-        if breadth < 0:
-            breadth_text = (
-                "Breadth remains narrower than ideal. Equal weight has lagged cap weight over the last month, which suggests leadership is concentrated."
-            )
-        else:
-            breadth_text = (
-                "Breadth has improved. Equal weight has kept pace with or exceeded cap weight over the last month, which points to healthier participation."
-            )
-
-    trend_text_parts: List[str] = []
-    if spy_above_50:
-        trend_text_parts.append("SPY remains above its 50-day moving average")
+    if breadth is None:
+        breadth_text = "Breadth remains an important watchpoint."
+    elif breadth < 0:
+        breadth_text = (
+            f"Breadth remains narrower than ideal. Equal weight has lagged cap weight by {abs(breadth):.2f} percentage points over the last month, which suggests leadership is concentrated."
+        )
     else:
-        trend_text_parts.append("SPY has slipped below its 50-day moving average")
+        breadth_text = (
+            f"Breadth has improved. Equal weight has matched or exceeded cap weight by {breadth:.2f} percentage points over the last month, which points to healthier participation."
+        )
 
-    if spy_above_200:
-        trend_text_parts.append("and it is still above its 200-day moving average")
-    else:
-        trend_text_parts.append("and it is below its 200-day moving average")
-
-    trend_text = " ".join(trend_text_parts) + "."
+    trend_text = (
+        "SPY remains above both its 50-day and 200-day moving averages."
+        if snapshot.get("spy_above_50dma") and snapshot.get("spy_above_200dma")
+        else "Trend has weakened, with SPY no longer holding both major moving averages."
+    )
 
     return (
-        f"Equity leadership remains important. SPY is up {spy_ytd} year to date. QQQ returned {qqq_1m} over the past month, while IWM returned {iwm_1m}. "
+        f"Equity leadership remains important. SPY is up {fmt_pct(snapshot.get('spy_ytd'))} year to date. "
+        f"QQQ returned {fmt_pct(snapshot.get('qqq_1m'))} over the last month, while IWM returned {fmt_pct(snapshot.get('iwm_1m'))}. "
         f"{trend_text} {breadth_text}"
     )
 
 
 def build_rates_and_macro_backdrop(snapshot: Dict[str, Any]) -> str:
-    ten_year = fmt_num(snapshot.get("ten_year"), 2)
-    three_month = fmt_num(snapshot.get("three_month"), 2)
     curve = safe_float(snapshot.get("curve_slope"))
-    fed_funds = fmt_num(snapshot.get("fed_funds"), 2)
-    cpi = fmt_num(snapshot.get("cpi_yoy"), 2)
-    unemployment = fmt_num(snapshot.get("unemployment"), 2)
 
     if curve is None:
-        curve_text = "The shape of the front-end versus long-end Treasury curve remains an important watchpoint."
+        curve_text = "The shape of the Treasury curve remains an important watchpoint."
     elif curve < 0:
-        curve_text = (
-            f"The Treasury curve remains inverted, with 10Y minus 3M at {curve:.2f}%. That still argues for discipline around cyclical risk."
-        )
+        curve_text = f"The Treasury curve remains inverted, with 10Y minus 3M at {curve:.2f}%. That still argues for discipline around cyclical risk."
     else:
-        curve_text = (
-            f"The Treasury curve is positively sloped, with 10Y minus 3M at {curve:.2f}%. That modestly reduces one of the market's longer-running macro stress signals."
-        )
+        curve_text = f"The Treasury curve is positively sloped, with 10Y minus 3M at {curve:.2f}%. That modestly reduces one of the longer-running macro stress signals."
 
     return (
-        f"The rates backdrop remains central to positioning. The 10-year Treasury yield is {ten_year}%, while the 3-month Treasury bill yield is {three_month}%. "
-        f"{curve_text} The effective fed funds rate is {fed_funds}%. Estimated CPI inflation is {cpi}% year over year, and unemployment is {unemployment}%. "
-        f"Together, these data points help frame whether the market is pricing a soft landing, renewed inflation pressure, or slower growth."
+        f"The rates backdrop remains central to positioning. The 10-year Treasury yield is {fmt_num(snapshot.get('ten_year'), 2)}%, while the 3-month Treasury bill yield is {fmt_num(snapshot.get('three_month'), 2)}%. "
+        f"{curve_text} The effective fed funds rate is {fmt_num(snapshot.get('fed_funds'), 2)}%. "
+        f"Estimated CPI inflation is {fmt_num(snapshot.get('cpi_yoy'), 2)}% year over year, and unemployment is {fmt_num(snapshot.get('unemployment'), 2)}%."
     )
 
 
@@ -449,33 +398,23 @@ def build_institutional_signals(snapshot: Dict[str, Any]) -> str:
     vix = safe_float(snapshot.get("vix_last"))
 
     if breadth is None:
-        breadth_text = "Breadth data are currently unavailable."
+        breadth_text = "Market breadth data are currently unavailable."
     elif breadth >= 0:
-        breadth_text = (
-            f"Market breadth has improved. RSP has outperformed or matched SPY over the last month by {breadth:.2f} percentage points. That is usually a healthier sign for internal participation."
-        )
+        breadth_text = f"Market breadth has improved. RSP has outperformed or matched SPY over the last month by {breadth:.2f} percentage points."
     else:
-        breadth_text = (
-            f"Market breadth is still weaker than ideal. RSP has lagged SPY over the last month by {abs(breadth):.2f} percentage points. That suggests narrower leadership."
-        )
+        breadth_text = f"Market breadth remains weaker than ideal. RSP has lagged SPY over the last month by {abs(breadth):.2f} percentage points."
 
     if credit_ratio is None:
-        credit_text = "Credit risk appetite data are currently unavailable."
+        credit_text = "Credit appetite data are currently unavailable."
     else:
-        credit_text = (
-            f"Credit appetite remains a useful cross-asset signal. The HYG-to-LQD price ratio is {credit_ratio:.3f}. A rising ratio typically supports a more constructive read on risk appetite, while a falling ratio argues for more caution."
-        )
+        credit_text = f"The HYG-to-LQD price ratio is {credit_ratio:.3f}. A rising ratio typically supports a more constructive read on risk appetite, while a falling ratio argues for more caution."
 
     if vol_ts is None:
         vol_text = "Volatility term structure data are currently unavailable."
     elif vol_ts < 1:
-        vol_text = (
-            f"Volatility term structure is constructive. VIX divided by VIX3M is {vol_ts:.2f}, which suggests near-term stress is lower than medium-term implied volatility. VIX itself is {vix:.1f}."
-        )
+        vol_text = f"Volatility term structure is constructive. VIX divided by VIX3M is {vol_ts:.2f}, with VIX itself at {vix:.1f}."
     else:
-        vol_text = (
-            f"Volatility term structure has turned less friendly. VIX divided by VIX3M is {vol_ts:.2f}, which suggests elevated near-term stress. VIX itself is {vix:.1f}."
-        )
+        vol_text = f"Volatility term structure has turned less friendly. VIX divided by VIX3M is {vol_ts:.2f}, with VIX itself at {vix:.1f}."
 
     return "\n".join([breadth_text, credit_text, vol_text])
 
@@ -489,28 +428,17 @@ def build_top_risks(snapshot: Dict[str, Any]) -> str:
     vix = safe_float(snapshot.get("vix_last"))
 
     if breadth is not None and breadth < 0:
-        risks.append(
-            "Leadership remains concentrated. Narrow breadth often leaves the market more vulnerable if leadership names lose momentum."
-        )
-
+        risks.append("Leadership remains concentrated. Narrow breadth often leaves the market more vulnerable if leadership names lose momentum.")
     if vol_ts is not None and vol_ts >= 1:
-        risks.append(
-            "Volatility term structure is signaling stress. When near-term implied volatility rises above medium-term volatility, market conditions often become less forgiving."
-        )
-
+        risks.append("Volatility term structure is signaling stress. When near-term implied volatility rises above medium-term volatility, market conditions often become less forgiving.")
     if curve is not None and curve < 0:
-        risks.append(
-            "The Treasury curve remains inverted. That does not time a recession, but it continues to argue against complacency in cyclical exposures."
-        )
-
+        risks.append("The Treasury curve remains inverted. That does not time a recession, but it still argues against complacency in cyclical exposures.")
     if vix is not None and vix > 22:
-        risks.append(
-            "Elevated implied volatility suggests the market is still pricing meaningful uncertainty around growth, policy, or earnings."
-        )
+        risks.append("Elevated implied volatility suggests the market is still pricing meaningful uncertainty around growth, policy, or earnings.")
 
     if not risks:
         risks = [
-            "The main near-term risk is false comfort. Even when headline index performance looks stable, internals and cross-asset signals can deteriorate before price does.",
+            "The main near-term risk is false comfort. Internals and cross-asset signals can deteriorate before headline price does.",
             "Policy repricing remains a risk. Shifts in inflation or labor data can move rate expectations quickly and tighten financial conditions."
         ]
 
@@ -521,26 +449,18 @@ def build_closing_takeaways(snapshot: Dict[str, Any]) -> str:
     regime = market_regime_text(snapshot)
 
     if regime == "constructive":
-        return (
-            "The primary takeaway is that the market still supports disciplined risk-taking, but position sizing should respect the fact that macro repricing can happen quickly. "
-            "Stay with leadership, but keep watching breadth, credit, and volatility structure for early signs of deterioration."
-        )
+        return "The primary takeaway is that the market still supports disciplined risk-taking, but position sizing should respect how quickly macro repricing can happen. Stay with leadership, but keep watching breadth, credit, and volatility structure for early signs of deterioration."
     if regime == "defensive":
-        return (
-            "The primary takeaway is that preservation matters more than forcing offense. "
-            "Until trend, breadth, and volatility structure improve together, it makes sense to stay selective, upgrade quality, and avoid stretching for beta."
-        )
-    return (
-        "The primary takeaway is balance. The market is not broken, but the signal set is mixed enough that investors should prefer selective exposure over broad complacency. "
-        "Keep one eye on trend and another on the cross-asset confirmation signals."
-    )
+        return "The primary takeaway is that preservation matters more than forcing offense. Until trend, breadth, and volatility structure improve together, it makes sense to stay selective and avoid stretching for beta."
+    return "The primary takeaway is balance. The market is not broken, but the signal set is mixed enough that investors should prefer selective exposure over broad complacency."
+
 
 
 def build_appendix_notes() -> str:
     notes = [
-        "Data sources include Yahoo Finance market data and optional Federal Reserve Economic Data series if a valid FRED_API_KEY is provided in the environment.",
+        "Data sources include Yahoo Finance market data and optional Federal Reserve Economic Data series when a valid FRED_API_KEY is provided.",
         "Treasury yield symbols from Yahoo Finance use different scaling conventions. This script normalizes ^TNX and ^IRX for commentary purposes.",
-        "Credit spread commentary uses the HYG-to-LQD ratio as a market-based proxy for credit risk appetite when direct spread data are not supplied.",
+        "Credit commentary uses the HYG-to-LQD ratio as a practical market-based proxy for credit risk appetite.",
         "Breadth commentary uses RSP relative to SPY as a practical proxy for equal-weight versus cap-weight participation."
     ]
     return "\n".join(notes)
@@ -567,14 +487,12 @@ def build_text_version(packet: Dict[str, Any]) -> str:
         parts.append("=" * len(heading))
         parts.append(str(content).strip())
         parts.append("")
-
     return "\n".join(parts).strip() + "\n"
 
 
 def build_packet() -> Dict[str, Any]:
     values = get_latest_values()
     snapshot = compute_market_snapshot(values)
-
     today = previous_business_day(datetime.now())
 
     packet = {
@@ -600,9 +518,8 @@ def save_packet(packet: Dict[str, Any]) -> None:
     with open(PACKET_JSON_PATH, "w", encoding="utf-8") as f:
         json.dump(packet, f, indent=2, ensure_ascii=False)
 
-    text_version = build_text_version(packet)
     with open(PACKET_TXT_PATH, "w", encoding="utf-8") as f:
-        f.write(text_version)
+        f.write(build_text_version(packet))
 
 
 def main() -> None:
