@@ -4,8 +4,7 @@ from datetime import datetime
 
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
-from docx.enum.section import WD_SECTION_START
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
@@ -36,18 +35,6 @@ def set_document_defaults(doc: Document) -> None:
         styles["Title"]._element.rPr.rFonts.set(qn("w:eastAsia"), "Calibri")
         styles["Title"].font.size = Pt(22)
         styles["Title"].font.bold = True
-
-    if "Heading 1" in styles:
-        styles["Heading 1"].font.name = "Calibri"
-        styles["Heading 1"]._element.rPr.rFonts.set(qn("w:eastAsia"), "Calibri")
-        styles["Heading 1"].font.size = Pt(16)
-        styles["Heading 1"].font.bold = True
-
-    if "Heading 2" in styles:
-        styles["Heading 2"].font.name = "Calibri"
-        styles["Heading 2"]._element.rPr.rFonts.set(qn("w:eastAsia"), "Calibri")
-        styles["Heading 2"].font.size = Pt(14)
-        styles["Heading 2"].font.bold = True
 
 
 def add_page_number(paragraph) -> None:
@@ -139,7 +126,7 @@ def add_section_heading(doc: Document, text: str) -> None:
     run.font.color.rgb = RGBColor(31, 56, 100)
 
 
-def add_body_paragraph(doc: Document, text: str, bold: bool = False) -> None:
+def add_body_paragraph(doc: Document, text: str) -> None:
     if not text or not text.strip():
         return
 
@@ -149,29 +136,10 @@ def add_body_paragraph(doc: Document, text: str, bold: bool = False) -> None:
     run = p.add_run(text.strip())
     run.font.name = "Calibri"
     run.font.size = Pt(14)
-    run.bold = bold
-
-
-def add_bullets_from_text(doc: Document, text: str) -> None:
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    for line in lines:
-        clean_line = line
-        if clean_line.startswith("- "):
-            clean_line = clean_line[2:]
-        elif clean_line.startswith("• "):
-            clean_line = clean_line[2:]
-
-        p = doc.add_paragraph(style="List Bullet")
-        p.paragraph_format.space_after = Pt(4)
-        p.paragraph_format.line_spacing = 1.1
-        run = p.add_run(clean_line)
-        run.font.name = "Calibri"
-        run.font.size = Pt(14)
 
 
 def add_callout_box(doc: Document, heading: str, body: str) -> None:
     table = doc.add_table(rows=1, cols=1)
-    table.autofit = True
     cell = table.cell(0, 0)
 
     tc_pr = cell._tc.get_or_add_tcPr()
@@ -222,42 +190,18 @@ def add_chart(doc: Document, image_path: str, caption: str = "", width_inches: f
         crun.font.color.rgb = RGBColor(89, 89, 89)
 
 
-def render_section(doc: Document, heading: str, content) -> None:
-    if content is None:
+def render_section(doc: Document, heading: str, content: str) -> None:
+    if not content:
         return
-
     add_section_heading(doc, heading)
-
-    if isinstance(content, str):
-        paragraphs = [p.strip() for p in content.split("\n") if p.strip()]
-        for paragraph in paragraphs:
-            add_body_paragraph(doc, paragraph)
-
-    elif isinstance(content, list):
-        for item in content:
-            if isinstance(item, str):
-                add_body_paragraph(doc, item)
-            elif isinstance(item, dict):
-                label = item.get("label", "")
-                value = item.get("value", "")
-                combined = f"{label}: {value}" if label else str(value)
-                add_body_paragraph(doc, combined)
-
-    elif isinstance(content, dict):
-        for key, value in content.items():
-            add_body_paragraph(doc, f"{key}: {value}")
-
-    else:
-        add_body_paragraph(doc, str(content))
+    paragraphs = [p.strip() for p in str(content).split("\n") if p.strip()]
+    for paragraph in paragraphs:
+        add_body_paragraph(doc, paragraph)
 
 
 def load_packet_json(packet_json_path: Path) -> dict:
     if not packet_json_path.exists():
-        raise FileNotFoundError(
-            f"Could not find packet JSON file at: {packet_json_path}. "
-            f"Make sure build_weekly_market_packet.py writes output/weekly_market_packet.json"
-        )
-
+        raise FileNotFoundError(f"Could not find packet JSON file at: {packet_json_path}")
     with open(packet_json_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -267,11 +211,12 @@ def build_docx(packet_data: dict, output_path: Path) -> Path:
     set_document_defaults(doc)
     add_footer_with_page_number(doc)
 
-    title = packet_data.get("title", "Weekly Market Packet")
-    subtitle = packet_data.get("subtitle", "Institutional Market Commentary")
-    report_date = packet_data.get("date", datetime.now().strftime("%B %d, %Y"))
-
-    add_title_block(doc, title=title, subtitle=subtitle, report_date=report_date)
+    add_title_block(
+        doc,
+        title=packet_data.get("title", "Weekly Market Packet"),
+        subtitle=packet_data.get("subtitle", "Institutional Market Commentary"),
+        report_date=packet_data.get("date", datetime.now().strftime("%B %d, %Y")),
+    )
 
     executive_summary = packet_data.get("executive_summary", "")
     if executive_summary:
@@ -287,21 +232,19 @@ def build_docx(packet_data: dict, output_path: Path) -> Path:
     ]
 
     for heading, content in section_order:
-        if content:
-            render_section(doc, heading, content)
+        render_section(doc, heading, content)
 
         if heading == "Institutional Signals":
             charts = packet_data.get("charts", [])
             if charts:
                 add_section_heading(doc, "Market Charts")
                 for chart in charts:
-                    if isinstance(chart, dict):
-                        add_chart(
-                            doc,
-                            image_path=chart.get("path", ""),
-                            caption=chart.get("caption", ""),
-                            width_inches=chart.get("width_inches", 6.5),
-                        )
+                    add_chart(
+                        doc,
+                        image_path=chart.get("path", ""),
+                        caption=chart.get("caption", ""),
+                        width_inches=chart.get("width_inches", 6.5),
+                    )
 
     appendix_notes = packet_data.get("appendix_notes", "")
     if appendix_notes:
